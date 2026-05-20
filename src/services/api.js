@@ -180,13 +180,15 @@ export const restartInstance = (id) =>
   api.post(`/instances/${id}/restart`);
 
 export const instanceAction = (id, action) =>
-  api.post(`/instances/${id}/${action}`);
+  api.post(`/instances/${id}/action`, { action });
 
 // =========================
 // Users
 // =========================
-export const getUsers = () =>
-  normalizeArrayResponse(api.get('/users'), 'users');
+export const getUsers = (projectId = null) => {
+  const params = projectId ? { project_id: projectId } : {};
+  return normalizeArrayResponse(api.get('/users', { params }), 'users');
+};
 
 export const getUser = (id) =>
   api.get(`/users/${id}`);
@@ -263,8 +265,8 @@ export const deleteStorageVolume = (id) =>
 // =========================
 // User Storages
 // =========================
-export const getUserStorages = () =>
-  normalizeArrayResponse(api.get('/user-storages'), 'userStorages');
+export const getUserStorages = (filters = {}) =>
+  normalizeArrayResponse(api.get('/user-storages', { params: filters }), 'userStorages');
 
 export const createUserStorage = (data) =>
   api.post('/user-storages', data);
@@ -309,6 +311,9 @@ export const getProjects = () =>
 
 export const getProject = (id) =>
   api.get(`/projects/${id}`);
+
+export const getProjectSummary = (id) =>
+  api.get(`/projects/${id}/summary`);
 
 export const createProject = (data) =>
   api.post('/projects', data);

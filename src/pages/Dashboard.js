@@ -1,325 +1,175 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { Server, Cpu, Box, Activity, RefreshCw, Database, AlertTriangle } from 'lucide-react';
 import {
-  Server,
-  Cpu,
-  Box,
-  Activity,
-  TrendingUp,
-  Zap,
-  CheckCircle,
-  AlertCircle
-} from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { getHealth, getNodes, getPods, getGpuInventory, getInstances } from '../services/api';
+  getHealth,
+  getMonitoringPods,
+  getMonitoringNodes,
+  getMonitoringGpus,
+  getInstances,
+  getProjects,
+  getUsers,
+  getStorageVolumes,
+  getUserStorages
+} from '../services/api';
 
-const asArray = (data, key) => {
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data?.[key])) return data[key];
-  return [];
-};
+const asArray = (data, key) => Array.isArray(data) ? data : (Array.isArray(data?.[key]) ? data[key] : []);
+const lower = (v) => String(v || '').toLowerCase();
 
 const Dashboard = () => {
   const [health, setHealth] = useState(null);
-  const [nodes, setNodes] = useState([]);
   const [pods, setPods] = useState([]);
+  const [nodes, setNodes] = useState([]);
   const [gpus, setGpus] = useState([]);
   const [instances, setInstances] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [volumes, setVolumes] = useState([]);
+  const [storages, setStorages] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+
+  const fetchData = async () => {
+    setRefreshing(true);
+    setError('');
+    try {
+      const [healthRes, podsRes, nodesRes, gpusRes, instancesRes, projectsRes, usersRes, volumesRes, storagesRes] = await Promise.allSettled([
+        getHealth(),
+        getMonitoringPods(),
+        getMonitoringNodes(),
+        getMonitoringGpus(),
+        getInstances(),
+        getProjects(),
+        getUsers(),
+        getStorageVolumes(),
+        getUserStorages()
+      ]);
+
+      const getData = (res) => res.status === 'fulfilled' ? res.value.data : null;
+
+      const h = getData(healthRes);
+      const p = asArray(getData(podsRes), 'pods');
+      const n = asArray(getData(nodesRes), 'nodes');
+      const g = asArray(getData(gpusRes), 'gpus');
+
+      setHealth(h || { status: 'unknown', database: 'unknown' });
+      setPods(p);
+      setNodes(n);
+      setGpus(g);
+      setInstances(asArray(getData(instancesRes), 'instances'));
+      setProjects(asArray(getData(projectsRes), 'projects'));
+      setUsers(asArray(getData(usersRes), 'users'));
+      setVolumes(asArray(getData(volumesRes), 'volumes'));
+      setStorages(asArray(getData(storagesRes), 'userStorages'));
+
+      const failed = [podsRes, nodesRes, gpusRes, instancesRes, projectsRes, usersRes, volumesRes, storagesRes]
+        .filter(r => r.status === 'rejected').length;
+      if (failed > 0) setError(`${failed} dashboard data request(s) failed. Check backend/network logs.`);
+    } catch (err) {
+      console.error('Dashboard fetch failed:', err);
+      setError(err.message || 'Dashboard fetch failed');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 30000); // Refresh every 30 seconds
-    return () => clearInterval(interval);
+    const timer = setInterval(fetchData, 30000);
+    return () => clearInterval(timer);
   }, []);
 
-  const fetchData = async () => {
-      try {
-        const [healthRes, nodesRes, podsRes, gpusRes, instancesRes] = await Promise.all([
-          getHealth(),
-          getNodes(),
-          getPods(),
-          getGpuInventory(),
-          getInstances()
-        ]);
+  const runningPods = pods.filter(p => lower(p.status) === 'running').length;
+  const activeInstances = instances.filter(i => lower(i.status) === 'running').length;
+  const readyNodes = nodes.filter(n => n.ready === true || lower(n.status) === 'ready').length;
+  const gpuAdvertised = gpus.reduce((sum, g) => sum + Number(g.allocatable || g.gpu_allocatable || g.available || 0), 0);
+  const gpuPhysical = gpus.reduce((sum, g) => sum + Number(g.physical_count || g.gpu_count_label || 0), 0);
+  const storageAllocated = storages.reduce((sum, s) => sum + Number(s.quota_gb || 0), 0);
 
-        const asArray = (data, key) => {
-          if (Array.isArray(data)) return data;
-          if (Array.isArray(data?.[key])) return data[key];
-          return [];
-        };
-
-        const nodesArr = asArray(nodesRes.data, 'nodes');
-
-        setHealth({
-          database: healthRes.data?.database || 'unknown',
-          kubernetes: nodesArr.length > 0 ? 'connected' : 'unknown',
-        });
-        setNodes(nodesArr);
-        setPods(asArray(podsRes.data, 'pods'));
-        setGpus(asArray(gpusRes.data, 'gpus'));
-        setInstances(asArray(instancesRes.data, 'instances'));
-      } catch (error) {
-        console.error('Error fetching data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-  // Calculate stats
-  const runningPods = pods.filter(p => p.status === 'Running').length;
-  const availableGpus = gpus.filter(g => g.status === 'available').length;
-  const activeInstances = instances.filter(i => i.status === 'running').length;
-
-  // Mock usage data for chart (replace with real metrics later)
-  const usageData = [
-    { time: '00:00', gpu: 45, cpu: 30, memory: 55 },
-    { time: '04:00', gpu: 52, cpu: 35, memory: 58 },
-    { time: '08:00', gpu: 78, cpu: 65, memory: 72 },
-    { time: '12:00', gpu: 85, cpu: 75, memory: 80 },
-    { time: '16:00', gpu: 72, cpu: 60, memory: 68 },
-    { time: '20:00', gpu: 65, cpu: 45, memory: 62 },
-    { time: 'Now', gpu: 68, cpu: 50, memory: 65 },
-  ];
-
-  // GPU status distribution for pie chart
-  const gpuStatusData = [
-    { name: 'Available', value: availableGpus, color: '#10b981' },
-    { name: 'Rented', value: gpus.filter(g => g.status === 'rented').length, color: '#a855f7' },
-    { name: 'Maintenance', value: gpus.filter(g => g.status === 'maintenance').length, color: '#f59e0b' },
-  ].filter(item => item.value > 0);
-
-  if (loading) {
-    return (
-      <div className="loading">
-        <div className="spinner"></div>
-      </div>
-    );
-  }
+  if (loading) return <div className="loading-container"><div className="spinner"></div><p>Loading dashboard...</p></div>;
 
   return (
     <div>
       <div className="page-header">
-        <h1>Dashboard</h1>
-        <p>Overview of your GPU rental cluster</p>
+        <div>
+          <h1>Dashboard</h1>
+          <p>Stable overview of projects, pods, storage, and GPU advertisement status</p>
+        </div>
+        <button className="btn btn-secondary" onClick={fetchData} disabled={refreshing}>
+          <RefreshCw size={18} className={refreshing ? 'spin' : ''} /> Refresh
+        </button>
       </div>
 
-      {/* Connection Status */}
-      <div style={{ display: 'flex', gap: '16px', marginBottom: '24px' }}>
+      {error && <div className="alert alert-error">{error}</div>}
+
+      <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
         <div className={`connection-status ${health?.database === 'connected' ? 'connected' : 'disconnected'}`}>
           <span className={`pulse ${health?.database === 'connected' ? 'green' : 'red'}`}></span>
-          <span>Database: {health?.database || 'Unknown'}</span>
+          <span>Database: {health?.database || 'unknown'}</span>
         </div>
-        <div className={`connection-status ${health?.kubernetes === 'connected' ? 'connected' : 'disconnected'}`}>
-          <span className={`pulse ${health?.kubernetes === 'connected' ? 'green' : 'red'}`}></span>
-          <span>Kubernetes: {health?.kubernetes || 'Unknown'}</span>
+        <div className={`connection-status ${nodes.length > 0 ? 'connected' : 'disconnected'}`}>
+          <span className={`pulse ${nodes.length > 0 ? 'green' : 'red'}`}></span>
+          <span>Kubernetes Nodes: {nodes.length > 0 ? 'visible' : 'not visible to backend'}</span>
         </div>
       </div>
 
-      {/* Stats Grid */}
       <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-icon cyan">
-            <Server size={24} />
-          </div>
-          <div className="stat-content">
-            <h3>{nodes.length}</h3>
-            <p>Total Nodes</p>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-icon purple">
-            <Cpu size={24} />
-          </div>
-          <div className="stat-content">
-            <h3>{gpus.length > 0 ? gpus.length : '—'}</h3>
-            <p>Total GPUs</p>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-icon green">
-            <Zap size={24} />
-          </div>
-          <div className="stat-content">
-            <h3>{availableGpus > 0 ? availableGpus : '—'}</h3>
-            <p>Available GPUs</p>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-icon blue">
-            <Box size={24} />
-          </div>
-          <div className="stat-content">
-            <h3>{runningPods}</h3>
-            <p>Running Pods</p>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-icon purple">
-            <Activity size={24} />
-          </div>
-          <div className="stat-content">
-            <h3>{activeInstances > 0 ? activeInstances : '—'}</h3>
-            <p>Active Instances</p>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-icon cyan">
-            <TrendingUp size={24} />
-          </div>
-          <div className="stat-content">
-            <h3>{pods.length}</h3>
-            <p>Total Pods</p>
-          </div>
-        </div>
+        <div className="stat-card"><Server size={24} /><div className="stat-content"><h3>{readyNodes}/{nodes.length}</h3><p>Ready Nodes</p></div></div>
+        <div className="stat-card"><Cpu size={24} /><div className="stat-content"><h3>{gpuAdvertised || 0}</h3><p>Advertised GPU Slots</p></div></div>
+        <div className="stat-card"><AlertTriangle size={24} /><div className="stat-content"><h3>{gpuPhysical || '—'}</h3><p>Physical GPUs From Labels</p></div></div>
+        <div className="stat-card"><Box size={24} /><div className="stat-content"><h3>{runningPods}/{pods.length}</h3><p>Tracked Running Pods</p></div></div>
+        <div className="stat-card"><Activity size={24} /><div className="stat-content"><h3>{activeInstances}/{instances.length}</h3><p>Active Instances</p></div></div>
+        <div className="stat-card"><Database size={24} /><div className="stat-content"><h3>{storageAllocated} GB</h3><p>Allocated Storage</p></div></div>
       </div>
 
-      {/* Charts Section */}
-      <div className="grid-2" style={{ marginBottom: '24px' }}>
-        {/* Usage Chart */}
+      <div className="grid-2" style={{ marginTop: '24px' }}>
         <div className="card">
-          <div className="card-header">
-            <div>
-              <h3 className="card-title">Resource Usage</h3>
-              <p className="card-subtitle">GPU, CPU, and Memory over time</p>
-            </div>
+          <div className="card-header"><h3 className="card-title">Platform Summary</h3></div>
+          <div className="table-container">
+            <table className="data-table"><tbody>
+              <tr><td>Projects</td><td>{projects.length}</td></tr>
+              <tr><td>Users</td><td>{users.length}</td></tr>
+              <tr><td>Storage Volumes</td><td>{volumes.length}</td></tr>
+              <tr><td>User Storage Allocations</td><td>{storages.length}</td></tr>
+              <tr><td>GPU Monitoring Rows</td><td>{gpus.length}</td></tr>
+            </tbody></table>
           </div>
-          <ResponsiveContainer width="100%" height={250}>
-            <AreaChart data={usageData}>
-              <defs>
-                <linearGradient id="gpuGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#00d4aa" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#00d4aa" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="cpuGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#a855f7" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#a855f7" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis dataKey="time" stroke="#6b7280" fontSize={12} />
-              <YAxis stroke="#6b7280" fontSize={12} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#1a1425',
-                  border: '1px solid #374151',
-                  borderRadius: '8px',
-                  color: '#fff'
-                }}
-              />
-              <Area
-                type="monotone"
-                dataKey="gpu"
-                stroke="#00d4aa"
-                fill="url(#gpuGradient)"
-                strokeWidth={2}
-                name="GPU %"
-              />
-              <Area
-                type="monotone"
-                dataKey="cpu"
-                stroke="#a855f7"
-                fill="url(#cpuGradient)"
-                strokeWidth={2}
-                name="CPU %"
-              />
-            </AreaChart>
-          </ResponsiveContainer>
         </div>
 
-        {/* GPU Status Pie Chart */}
         <div className="card">
-          <div className="card-header">
-            <div>
-              <h3 className="card-title">GPU Status Distribution</h3>
-              <p className="card-subtitle">Current allocation status</p>
-            </div>
-          </div>
-          {gpuStatusData.length > 0 ? (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <ResponsiveContainer width="100%" height={250}>
-                <PieChart>
-                  <Pie
-                    data={gpuStatusData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={90}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {gpuStatusData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#1a1425',
-                      border: '1px solid #374151',
-                      borderRadius: '8px',
-                      color: '#fff'
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-              <div style={{ marginLeft: '16px' }}>
-                {gpuStatusData.map((item, index) => (
-                  <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: item.color }}></div>
-                    <span style={{ fontSize: '14px', color: '#9ca3af' }}>{item.name}: {item.value}</span>
-                  </div>
-                ))}
-              </div>
+          <div className="card-header"><h3 className="card-title">GPU Advertisement Status</h3></div>
+          {gpus.length === 0 ? (
+            <div style={{ padding: '20px', color: '#f59e0b' }}>
+              Backend returned no GPU monitoring rows. This usually means Kubernetes GPU resources are not visible to the backend or the NVIDIA device plugin/MIG advertisement is not healthy. Check /api/gpu-inventory and gpu-operator pods.
             </div>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '250px', color: '#6b7280' }}>
-              <p>No GPU data available. Add GPUs to inventory.</p>
+            <div className="table-container">
+              <table className="data-table">
+                <thead><tr><th>Node</th><th>Resource</th><th>Capacity</th><th>Allocatable</th><th>Status</th></tr></thead>
+                <tbody>{gpus.slice(0, 6).map((g, idx) => (
+                  <tr key={`${g.node_name}-${g.resource_name}-${idx}`}>
+                    <td>{g.node_name || '-'}</td><td>{g.resource_name || '-'}</td><td>{g.capacity ?? '-'}</td><td>{g.allocatable ?? '-'}</td><td>{g.status || '-'}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
             </div>
           )}
         </div>
       </div>
 
-      {/* Nodes Overview */}
-      <div className="card">
-        <div className="card-header">
-          <div>
-            <h3 className="card-title">Cluster Nodes</h3>
-            <p className="card-subtitle">Status of all Kubernetes nodes</p>
-          </div>
-        </div>
+      <div className="card" style={{ marginTop: '24px' }}>
+        <div className="card-header"><h3 className="card-title">Recent Instance State</h3></div>
         <div className="table-container">
           <table className="data-table">
-            <thead>
-              <tr>
-                <th>Node Name</th>
-                <th>Status</th>
-                <th>CPU</th>
-                <th>Memory</th>
-                <th>GPU</th>
-              </tr>
-            </thead>
+            <thead><tr><th>ID</th><th>Pod</th><th>Project</th><th>User</th><th>Plan</th><th>Status</th></tr></thead>
             <tbody>
-              {nodes.map((node, index) => (
-                <tr key={index}>
-                  <td style={{ fontWeight: '500' }}>{node.name}</td>
-                  <td>
-                    <span className={`status-badge ${node.status?.toLowerCase()}`}>
-                      {node.status === 'Ready' ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
-                      {node.status}
-                    </span>
-                  </td>
-                  <td>{node.cpu} cores</td>
-                  <td>{node.memory}</td>
-                  <td>
-                    <span style={{ color: node.gpu !== '0' ? '#00d4aa' : '#6b7280' }}>
-                      {node.gpu !== '0' ? `${node.gpu} GPU(s)` : 'None'}
-                    </span>
-                  </td>
+              {pods.slice(0, 10).map(p => (
+                <tr key={p.instance_id || p.pod_name}>
+                  <td>{p.instance_id}</td><td>{p.pod_name}</td><td>{p.project_id || '-'}</td><td>{p.user_id || '-'}</td><td>{p.plan_id || '-'}</td><td>{p.status}</td>
                 </tr>
               ))}
+              {pods.length === 0 && <tr><td colSpan="6" style={{ textAlign: 'center', padding: '20px' }}>No tracked pods/instances.</td></tr>}
             </tbody>
           </table>
         </div>

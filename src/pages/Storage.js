@@ -13,7 +13,11 @@ import {
 } from '../services/api';
 import './Storage.css';
 
-const asArray = (data, key) => Array.isArray(data) ? data : (Array.isArray(data?.[key]) ? data[key] : []);
+const asArray = (data, key) =>
+  Array.isArray(data) ? data : (Array.isArray(data?.[key]) ? data[key] : []);
+
+const toIdString = (v) =>
+  v === null || v === undefined ? '' : String(v);
 
 const Storage = () => {
   const [volumes, setVolumes] = useState([]);
@@ -53,21 +57,30 @@ const Storage = () => {
     try {
       setLoading(true);
       setError(null);
-      const [projectsRes, volumesRes] = await Promise.all([getProjects(), getStorageVolumes()]);
+
+      const [projectsRes, volumesRes] = await Promise.all([
+        getProjects(),
+        getStorageVolumes()
+      ]);
+
       const projectList = asArray(projectsRes.data, 'projects');
-      const nextProjectId = selectedProject || projectList[0]?.id || '';
+      const volumeList = asArray(volumesRes.data, 'volumes');
+      const nextProjectId = toIdString(selectedProject || projectList[0]?.id || '');
 
       setProjects(projectList);
       setSelectedProject(nextProjectId);
-      setVolumes(asArray(volumesRes.data, 'volumes'));
+      setVolumes(volumeList);
 
       const [usersRes, storagesRes] = await Promise.all([
         getUsers(nextProjectId || null),
         getUserStorages(nextProjectId ? { project_id: nextProjectId } : {})
       ]);
 
-      setUsers(asArray(usersRes.data, 'users'));
-      setUserStorages(asArray(storagesRes.data, 'userStorages'));
+      const usersList = asArray(usersRes.data, 'users');
+      const storageList = asArray(storagesRes.data, 'userStorages');
+
+      setUsers(usersList);
+      setUserStorages(storageList);
 
       if (nextProjectId) {
         try {
@@ -83,9 +96,9 @@ const Storage = () => {
 
       setNewUserStorage(prev => ({
         ...prev,
-        project_id: prev.project_id || nextProjectId || '',
-        user_id: prev.user_id || asArray(usersRes.data, 'users')[0]?.id || '',
-        volume_id: prev.volume_id || asArray(volumesRes.data, 'volumes')[0]?.id || ''
+        project_id: prev.project_id ? toIdString(prev.project_id) : toIdString(nextProjectId),
+        user_id: prev.user_id ? toIdString(prev.user_id) : toIdString(usersList[0]?.id),
+        volume_id: prev.volume_id ? toIdString(prev.volume_id) : toIdString(volumeList[0]?.id)
       }));
     } catch (err) {
       console.error('Error fetching storage data:', err);
@@ -95,12 +108,21 @@ const Storage = () => {
     }
   }, [selectedProject]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
-  const getUserName = (userId) => users.find(u => Number(u.id) === Number(userId))?.username || `User #${userId}`;
-  const getProjectName = (projectId) => projects.find(p => Number(p.id) === Number(projectId))?.name || `Project #${projectId}`;
-  const getVolumeName = (volumeId) => volumes.find(v => Number(v.id) === Number(volumeId))?.name || `Volume #${volumeId}`;
-  const getVolumeMountPath = (volumeId) => volumes.find(v => Number(v.id) === Number(volumeId))?.mount_path || '';
+  const getUserName = (userId) =>
+    users.find(u => Number(u.id) === Number(userId))?.username || `User #${userId}`;
+
+  const getProjectName = (projectId) =>
+    projects.find(p => Number(p.id) === Number(projectId))?.name || `Project #${projectId}`;
+
+  const getVolumeName = (volumeId) =>
+    volumes.find(v => Number(v.id) === Number(volumeId))?.name || `Volume #${volumeId}`;
+
+  const getVolumeMountPath = (volumeId) =>
+    volumes.find(v => Number(v.id) === Number(volumeId))?.mount_path || '';
 
   const showSuccess = (message) => {
     setSuccessMessage(message);
@@ -117,20 +139,36 @@ const Storage = () => {
   };
 
   const handleProjectChange = (projectId) => {
-    setSelectedProject(projectId);
-    setNewUserStorage(prev => ({ ...prev, project_id: projectId, user_id: '', volume_id: prev.volume_id }));
+    const projectIdString = toIdString(projectId);
+    setSelectedProject(projectIdString);
+    setNewUserStorage(prev => ({
+      ...prev,
+      project_id: projectIdString,
+      user_id: '',
+      volume_id: toIdString(prev.volume_id),
+      folder_path: ''
+    }));
   };
 
   const handleCreateVolume = async (e) => {
     e.preventDefault();
     setError(null);
+
     try {
       await createStorageVolume({
         ...newVolume,
         total_capacity_gb: Number(newVolume.total_capacity_gb || 0)
       });
+
       setShowVolumeModal(false);
-      setNewVolume({ name: '', mount_path: '', total_capacity_gb: 1000, storage_class: 'kf-work1', status: 'available' });
+      setNewVolume({
+        name: '',
+        mount_path: '',
+        total_capacity_gb: 1000,
+        storage_class: 'kf-work1',
+        status: 'available'
+      });
+
       showSuccess('Storage volume created');
       fetchData();
     } catch (err) {
@@ -155,18 +193,24 @@ const Storage = () => {
         folder_path: newUserStorage.folder_path,
         quota_gb: Number(newUserStorage.quota_gb || 0)
       });
+
       setShowUserStorageModal(false);
       setNewUserStorage({
-        project_id: selectedProject || '',
+        project_id: toIdString(selectedProject),
         user_id: '',
-        volume_id: volumes[0]?.id || '',
+        volume_id: toIdString(volumes[0]?.id),
         folder_path: '',
         quota_gb: 10
       });
+
       showSuccess('Storage allocation created');
       fetchData();
     } catch (err) {
-      setError(typeof err.response?.data?.detail === 'object' ? JSON.stringify(err.response.data.detail) : (err.response?.data?.detail || 'Failed to create allocation'));
+      setError(
+        typeof err.response?.data?.detail === 'object'
+          ? JSON.stringify(err.response.data.detail)
+          : (err.response?.data?.detail || 'Failed to create allocation')
+      );
     }
   };
 
@@ -214,19 +258,35 @@ const Storage = () => {
     }
   };
 
-  if (loading) return <div className="loading-container"><div className="spinner"></div><p>Loading storage...</p></div>;
+  const handleOpenUserStorageModal = () => {
+    setNewUserStorage(prev => ({
+      ...prev,
+      project_id: toIdString(selectedProject || projects[0]?.id),
+      user_id: toIdString(prev.user_id || users[0]?.id),
+      volume_id: toIdString(prev.volume_id || volumes[0]?.id)
+    }));
+    setShowUserStorageModal(true);
+  };
+
+  const filteredUsersForSelectedProject = users.filter(user =>
+    !newUserStorage.project_id || Number(user.project_id) === Number(newUserStorage.project_id)
+  );
+
+  if (loading) {
+    return <div className="loading-container"><div className="spinner"></div><p>Loading storage...</p></div>;
+  }
 
   return (
     <div className="storage-page">
       <div className="page-header">
         <div><h1>Storage Management</h1><p>Project-aware storage volumes, user folders, and quotas</p></div>
         <div className="header-actions">
-          <select value={selectedProject} onChange={e => handleProjectChange(e.target.value)}>
-            {projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
+          <select value={toIdString(selectedProject)} onChange={e => handleProjectChange(e.target.value)}>
+            {projects.map(project => <option key={project.id} value={String(project.id)}>{project.name}</option>)}
           </select>
           <button className="btn btn-secondary" onClick={fetchData}>Refresh</button>
           <button className="btn btn-primary" onClick={() => setShowVolumeModal(true)}>+ Volume</button>
-          <button className="btn btn-primary" onClick={() => setShowUserStorageModal(true)}>+ User Folder</button>
+          <button className="btn btn-primary" onClick={handleOpenUserStorageModal}>+ User Folder</button>
         </div>
       </div>
 
@@ -250,19 +310,14 @@ const Storage = () => {
             const pct = volume.total_capacity_gb > 0 ? Math.min((usage.totalAllocated / volume.total_capacity_gb) * 100, 100) : 0;
             return (
               <div key={volume.id} className="storage-card">
-                <div className="storage-card-header">
-                  <h3>{volume.name}</h3>
-                  <span className={`status-badge ${volume.status}`}>{volume.status}</span>
-                </div>
+                <div className="storage-card-header"><h3>{volume.name}</h3><span className={`status-badge ${volume.status}`}>{volume.status}</span></div>
                 <div className="storage-details">
                   <p><strong>Mount:</strong> {volume.mount_path}</p>
                   <p><strong>Class:</strong> {volume.storage_class}</p>
                   <p><strong>Capacity:</strong> {volume.total_capacity_gb} GB</p>
                   <p><strong>Project allocations:</strong> {usage.allocationCount}</p>
                 </div>
-                <div className="usage-bar">
-                  <div className="usage-fill" style={{ width: `${pct}%` }}></div>
-                </div>
+                <div className="usage-bar"><div className="usage-fill" style={{ width: `${pct}%` }}></div></div>
                 <p className="usage-text">{usage.totalAllocated} GB allocated in selected project</p>
                 <button className="btn btn-danger btn-sm" onClick={() => handleDeleteVolume(volume.id)}>Delete</button>
               </div>
@@ -315,12 +370,29 @@ const Storage = () => {
         <div className="modal-overlay"><div className="modal">
           <div className="modal-header"><h2>Create User Folder Allocation</h2><button className="btn-icon" onClick={() => setShowUserStorageModal(false)}>×</button></div>
           <form onSubmit={handleCreateUserStorage}>
-            <div className="form-group"><label>Project</label><select value={newUserStorage.project_id} onChange={e => setNewUserStorage({ ...newUserStorage, project_id: e.target.value, user_id: '' })}>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
-            <div className="form-group"><label>User</label><select value={newUserStorage.user_id} onChange={e => setNewUserStorage({ ...newUserStorage, user_id: e.target.value })} required><option value="">Select user</option>{users.map(u => <option key={u.id} value={u.id}>{u.username}</option>)}</select></div>
-            <div className="form-group"><label>Volume</label><select value={newUserStorage.volume_id} onChange={e => {
-              const volume = volumes.find(v => Number(v.id) === Number(e.target.value));
-              setNewUserStorage({ ...newUserStorage, volume_id: e.target.value, folder_path: volume ? `${volume.mount_path}/users/${getUserName(newUserStorage.user_id) || 'user'}` : '' });
-            }} required><option value="">Select volume</option>{volumes.map(v => <option key={v.id} value={v.id}>{v.name} ({v.mount_path})</option>)}</select></div>
+            <div className="form-group"><label>Project</label><select value={toIdString(newUserStorage.project_id)} onChange={e => {
+              const projectId = e.target.value;
+              setSelectedProject(projectId);
+              setNewUserStorage(prev => ({ ...prev, project_id: projectId, user_id: '', folder_path: '' }));
+            }} required>{projects.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}</select></div>
+            <div className="form-group"><label>User</label><select value={toIdString(newUserStorage.user_id)} onChange={e => {
+              const userId = e.target.value;
+              const volume = volumes.find(v => Number(v.id) === Number(newUserStorage.volume_id));
+              setNewUserStorage(prev => ({
+                ...prev,
+                user_id: userId,
+                folder_path: volume ? `${volume.mount_path}/users/${getUserName(userId) || 'user'}` : prev.folder_path
+              }));
+            }} required><option value="">Select user</option>{filteredUsersForSelectedProject.map(u => <option key={u.id} value={String(u.id)}>{u.username}</option>)}</select></div>
+            <div className="form-group"><label>Volume</label><select value={toIdString(newUserStorage.volume_id)} onChange={e => {
+              const volumeId = e.target.value;
+              const volume = volumes.find(v => Number(v.id) === Number(volumeId));
+              setNewUserStorage(prev => ({
+                ...prev,
+                volume_id: volumeId,
+                folder_path: volume ? `${volume.mount_path}/users/${getUserName(prev.user_id) || 'user'}` : ''
+              }));
+            }} required><option value="">Select volume</option>{volumes.map(v => <option key={v.id} value={String(v.id)}>{v.name} ({v.mount_path})</option>)}</select></div>
             <div className="form-group"><label>Folder Path</label><input value={newUserStorage.folder_path} onChange={e => setNewUserStorage({ ...newUserStorage, folder_path: e.target.value })} placeholder={`${getVolumeMountPath(newUserStorage.volume_id)}/users/testuser`} required /></div>
             <div className="form-group"><label>Quota GB</label><input type="number" min="1" value={newUserStorage.quota_gb} onChange={e => setNewUserStorage({ ...newUserStorage, quota_gb: e.target.value })} required /></div>
             <div className="modal-actions"><button type="button" className="btn btn-secondary" onClick={() => setShowUserStorageModal(false)}>Cancel</button><button type="submit" className="btn btn-primary">Create Allocation</button></div>

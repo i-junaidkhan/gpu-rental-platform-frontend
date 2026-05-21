@@ -8,13 +8,18 @@ const api = axios.create({
 });
 
 // Keep backend array response usable in BOTH styles:
-// 1) res.data
-// 2) res.data.nodes / res.data.pods / etc.
+// 1) res.data as raw array
+// 2) res.data.nodes / res.data.pods / res.data.projects etc.
 const normalizeArrayResponse = async (promise, key) => {
   const res = await promise;
 
   if (Array.isArray(res.data)) {
     res.data[key] = res.data;
+    return res;
+  }
+
+  if (!Array.isArray(res.data?.[key])) {
+    res.data[key] = [];
   }
 
   return res;

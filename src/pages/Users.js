@@ -3,6 +3,7 @@ import { Users as UsersIcon, Plus, RefreshCw, Shield, User, Edit, Trash2, X, Sav
 import { getUsers, createUser, updateUser, deleteUser, getProjects } from '../services/api';
 
 const asArray = (data, key) => Array.isArray(data) ? data : (Array.isArray(data?.[key]) ? data[key] : []);
+const toIdString = (v) => v === null || v === undefined ? '' : String(v);
 
 const Users = () => {
   const [users, setUsers] = useState([]);
@@ -39,7 +40,7 @@ const Users = () => {
       const projectList = asArray(projectsRes.data, 'projects');
       setProjects(projectList);
       setUsers(asArray(usersRes.data, 'users'));
-      setFormData(prev => ({ ...prev, project_id: prev.project_id || projectList[0]?.id || '' }));
+      setFormData(prev => ({ ...prev, project_id: prev.project_id ? toIdString(prev.project_id) : toIdString(projectList[0]?.id) }));
     } catch (error) {
       console.error('Error fetching users:', error);
     } finally {
@@ -56,7 +57,7 @@ const Users = () => {
       email: '',
       role: 'user',
       balance: 0,
-      project_id: projects[0]?.id || '',
+      project_id: toIdString(projects[0]?.id),
       mfa_enabled: false
     });
     setFormError('');
@@ -71,7 +72,7 @@ const Users = () => {
       email: user.email || '',
       role: user.role || 'user',
       balance: Number(user.balance || 0),
-      project_id: user.project_id || projects[0]?.id || '',
+      project_id: user.project_id ? toIdString(user.project_id) : toIdString(projects[0]?.id),
       mfa_enabled: Boolean(user.mfa_enabled)
     });
     setFormError('');
@@ -131,9 +132,9 @@ const Users = () => {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
         <div className="form-group">
           <label>Project</label>
-          <select value={formData.project_id} onChange={e => setFormData({ ...formData, project_id: e.target.value })}>
+          <select value={toIdString(formData.project_id)} onChange={e => setFormData({ ...formData, project_id: e.target.value })}>
             <option value="">Unassigned</option>
-            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {projects.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
           </select>
         </div>
         <div className="form-group">
@@ -172,9 +173,9 @@ const Users = () => {
       <div className="page-header">
         <div><h1>Users</h1><p>Project-aware users, roles, MFA, and balances</p></div>
         <div style={{ display: 'flex', gap: '12px' }}>
-          <select value={selectedProjectFilter} onChange={e => setSelectedProjectFilter(e.target.value)}>
+          <select value={toIdString(selectedProjectFilter)} onChange={e => setSelectedProjectFilter(e.target.value)}>
             <option value="">All Projects</option>
-            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {projects.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
           </select>
           <button className="btn btn-secondary" onClick={fetchData} disabled={refreshing}><RefreshCw size={18} className={refreshing ? 'spin' : ''} /> Refresh</button>
           <button className="btn btn-primary" onClick={openAddModal}><Plus size={18} /> Add User</button>

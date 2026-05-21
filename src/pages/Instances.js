@@ -15,6 +15,7 @@ import {
 
 const asArray = (data, key) => Array.isArray(data) ? data : (Array.isArray(data?.[key]) ? data[key] : []);
 const n = (value) => Number(value || 0);
+const toIdString = (v) => v === null || v === undefined ? '' : String(v);
 
 const IMAGE_OPTIONS = [
   { value: 'ubuntu:22.04', label: 'Ubuntu 22.04 Base' },
@@ -79,7 +80,7 @@ const Instances = () => {
       ]);
 
       const nextProjects = asArray(projectsRes.data, 'projects');
-      const projectId = selectedProjectFilter || formData.project_id || nextProjects[0]?.id || '';
+      const projectId = toIdString(selectedProjectFilter || formData.project_id || nextProjects[0]?.id || '');
 
       const [usersRes, storagesRes] = await Promise.all([
         getUsers(projectId || null),
@@ -100,10 +101,10 @@ const Instances = () => {
 
       setFormData(prev => ({
         ...prev,
-        project_id: prev.project_id || projectId || '',
-        user_id: prev.user_id || nextUsers[0]?.id || '',
-        plan_id: prev.plan_id || nextPlans[0]?.id || '',
-        storage_id: prev.storage_id || ''
+        project_id: prev.project_id ? toIdString(prev.project_id) : toIdString(projectId),
+        user_id: prev.user_id ? toIdString(prev.user_id) : toIdString(nextUsers[0]?.id),
+        plan_id: prev.plan_id ? toIdString(prev.plan_id) : toIdString(nextPlans[0]?.id),
+        storage_id: toIdString(prev.storage_id)
       }));
     } catch (error) {
       console.error('Error fetching instances:', error);
@@ -133,9 +134,9 @@ const Instances = () => {
     const projectId = selectedProjectFilter || projects[0]?.id || '';
     const userList = users.filter(u => !projectId || Number(u.project_id) === Number(projectId));
     setFormData({
-      project_id: projectId,
-      user_id: userList[0]?.id || '',
-      plan_id: plans[0]?.id || '',
+      project_id: toIdString(projectId),
+      user_id: toIdString(userList[0]?.id),
+      plan_id: toIdString(plans[0]?.id),
       gpu_id: '',
       image: 'ubuntu:22.04',
       cpu_cores: 1,
@@ -154,7 +155,7 @@ const Instances = () => {
 
   const handleProjectChange = (projectId) => {
     const nextUsers = users.filter(u => Number(u.project_id) === Number(projectId));
-    setFormData(prev => ({ ...prev, project_id: projectId, user_id: nextUsers[0]?.id || '', storage_id: '' }));
+    setFormData(prev => ({ ...prev, project_id: toIdString(projectId), user_id: nextUsers[0]?.id || '', storage_id: '' }));
   };
 
   const handleCreateInstance = async (e) => {
@@ -249,9 +250,9 @@ const Instances = () => {
       <div className="page-header">
         <div><h1>Instances</h1><p>Create project-aware pods with GPU, CPU, RAM, storage, image, and app type</p></div>
         <div style={{ display: 'flex', gap: '12px' }}>
-          <select value={selectedProjectFilter} onChange={e => setSelectedProjectFilter(e.target.value)}>
+          <select value={toIdString(selectedProjectFilter)} onChange={e => setSelectedProjectFilter(e.target.value)}>
             <option value="">All Projects</option>
-            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {projects.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
           </select>
           <button className="btn btn-secondary" onClick={fetchData} disabled={refreshing}><RefreshCw size={18} className={refreshing ? 'spin' : ''} /> Refresh</button>
           <button className="btn btn-primary" onClick={openCreateModal}><Plus size={18} /> New Instance</button>
@@ -291,16 +292,16 @@ const Instances = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div className="form-group">
                 <label>Project *</label>
-                <select value={formData.project_id} onChange={e => handleProjectChange(e.target.value)} required>
+                <select value={toIdString(formData.project_id)} onChange={e => handleProjectChange(e.target.value)} required>
                   <option value="">Select project</option>
-                  {projects.map(p => <option key={p.id} value={p.id}>{p.name} (GPU limit: {p.max_gpu_count === 0 ? 'unlimited/default or zero' : p.max_gpu_count})</option>)}
+                  {projects.map(p => <option key={p.id} value={String(p.id)}>{p.name} (GPU limit: {p.max_gpu_count === 0 ? 'unlimited/default or zero' : p.max_gpu_count})</option>)}
                 </select>
               </div>
               <div className="form-group">
                 <label>User *</label>
-                <select value={formData.user_id} onChange={e => setFormData({ ...formData, user_id: e.target.value, storage_id: '' })} required>
+                <select value={toIdString(formData.user_id)} onChange={e => setFormData({ ...formData, user_id: e.target.value, storage_id: '' })} required>
                   <option value="">Select user</option>
-                  {usersForProject.map(u => <option key={u.id} value={u.id}>{u.username}</option>)}
+                  {usersForProject.map(u => <option key={u.id} value={String(u.id)}>{u.username}</option>)}
                 </select>
               </div>
             </div>
@@ -308,9 +309,9 @@ const Instances = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div className="form-group">
                 <label>GPU Plan *</label>
-                <select value={formData.plan_id} onChange={e => setFormData({ ...formData, plan_id: e.target.value })} required>
+                <select value={toIdString(formData.plan_id)} onChange={e => setFormData({ ...formData, plan_id: e.target.value })} required>
                   <option value="">Select plan</option>
-                  {plans.map(plan => <option key={plan.id} value={plan.id}>{plan.name} - {plan.resource_count} x {plan.k8s_resource_name}</option>)}
+                  {plans.map(plan => <option key={plan.id} value={String(plan.id)}>{plan.name} - {plan.resource_count} x {plan.k8s_resource_name}</option>)}
                 </select>
                 {selectedPlan && <small>{selectedPlan.price_per_hour}/hour</small>}
               </div>
@@ -332,9 +333,9 @@ const Instances = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div className="form-group">
                 <label>Storage Mount</label>
-                <select value={formData.storage_id} onChange={e => setFormData({ ...formData, storage_id: e.target.value })}>
+                <select value={toIdString(formData.storage_id)} onChange={e => setFormData({ ...formData, storage_id: e.target.value })}>
                   <option value="">No storage mount</option>
-                  {storagesForSelection.map(s => <option key={s.id} value={s.id}>{getStorageLabel(s.id)}</option>)}
+                  {storagesForSelection.map(s => <option key={s.id} value={String(s.id)}>{getStorageLabel(s.id)}</option>)}
                 </select>
                 <small>Mounted to /workspace if selected.</small>
               </div>

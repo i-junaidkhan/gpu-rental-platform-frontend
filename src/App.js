@@ -17,6 +17,7 @@ import Users from './pages/Users';
 import Plans from './pages/Plans';
 import Billing from './pages/Billing';
 import Storage from './pages/Storage';
+import Monitoring from './pages/Monitoring';
 
 //import PortSetting from './pages/PortSetting';
 
@@ -48,6 +49,8 @@ function App() {
         return <Plans />;
       case 'billing':
         return <Billing />;
+      case 'monitoring':
+        return <Monitoring />;
       case 'storage':
         return <Storage />;
 

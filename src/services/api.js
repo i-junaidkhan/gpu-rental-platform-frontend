@@ -329,6 +329,43 @@ export const updateProject = (id, data) =>
 export const deleteProject = (id) =>
   api.delete(`/projects/${id}`);
 
+
+// =========================
+// Instance Port / App Access
+// =========================
+export const getInstancePorts = (instanceId) =>
+  normalizeArrayResponse(api.get(`/instances/${instanceId}/ports`), 'ports');
+
+export const openInstancePort = (instanceId, data) =>
+  api.post(`/instances/${instanceId}/ports`, data);
+
+export const closeInstancePort = (instanceId, portId) =>
+  api.delete(`/instances/${instanceId}/ports/${portId}`);
+
+export const getInstanceLaunch = (instanceId) =>
+  api.get(`/instances/${instanceId}/launch`);
+
+// =========================
+// Monitoring
+// =========================
+export const getMonitoringPods = () =>
+  normalizeArrayResponse(api.get('/monitoring/pods'), 'pods');
+
+export const getMonitoringNodes = () =>
+  normalizeArrayResponse(api.get('/monitoring/nodes'), 'nodes');
+
+export const getMonitoringGpus = () =>
+  normalizeArrayResponse(api.get('/monitoring/gpus'), 'gpus');
+
+// =========================
+// Billing Usage
+// =========================
+export const getBillingUsageRaw = () =>
+  normalizeArrayResponse(api.get('/billing/usage/raw'), 'usage');
+
+export const getBillingUsageSummary = (period = 'daily') =>
+  api.get('/billing/usage/summary', { params: { period } });
+
 // =========================
 // Generic export
 // =========================

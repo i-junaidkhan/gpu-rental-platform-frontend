@@ -10,7 +10,11 @@ import {
   getGpuInventory,
   getPodLogs,
   getProjects,
-  getUserStorages
+  getUserStorages,
+  getInstancePorts,
+  openInstancePort,
+  closeInstancePort,
+  getInstanceLaunch
 } from '../services/api';
 
 const asArray = (data, key) => Array.isArray(data) ? data : (Array.isArray(data?.[key]) ? data[key] : []);
@@ -49,6 +53,9 @@ const Instances = () => {
   const [showLogsModal, setShowLogsModal] = useState(false);
   const [selectedInstance, setSelectedInstance] = useState(null);
   const [logs, setLogs] = useState('');
+  const [showPortsModal, setShowPortsModal] = useState(false);
+  const [ports, setPorts] = useState([]);
+  const [portForm, setPortForm] = useState({ port: 8888, target_port: 8888, protocol: 'TCP' });
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
   const [actionLoading, setActionLoading] = useState(null);
@@ -232,6 +239,71 @@ const Instances = () => {
     }
   };
 
+
+  const openPortsModal = async (instance) => {
+    setSelectedInstance(instance);
+    setPorts([]);
+    setPortForm({ port: instance.app_type === 'ssh' ? 22 : 8888, target_port: instance.app_type === 'ssh' ? 22 : 8888, protocol: 'TCP' });
+    setShowPortsModal(true);
+    try {
+      const response = await getInstancePorts(instance.id);
+      setPorts(asArray(response.data, 'ports'));
+    } catch (error) {
+      setPorts([]);
+    }
+  };
+
+  const refreshPorts = async () => {
+    if (!selectedInstance) return;
+    try {
+      const response = await getInstancePorts(selectedInstance.id);
+      setPorts(asArray(response.data, 'ports'));
+    } catch (error) {
+      alert(error.response?.data?.detail || 'Failed to refresh ports');
+    }
+  };
+
+  const handleOpenPort = async (e) => {
+    e.preventDefault();
+    if (!selectedInstance) return;
+    try {
+      await openInstancePort(selectedInstance.id, {
+        port: Number(portForm.port),
+        target_port: Number(portForm.target_port || portForm.port),
+        protocol: portForm.protocol || 'TCP'
+      });
+      await refreshPorts();
+    } catch (error) {
+      alert(typeof error.response?.data?.detail === 'object' ? JSON.stringify(error.response.data.detail) : (error.response?.data?.detail || 'Failed to open port'));
+    }
+  };
+
+  const handleClosePort = async (port) => {
+    if (!selectedInstance) return;
+    if (!window.confirm(`Close port ${port.port}?`)) return;
+    try {
+      await closeInstancePort(selectedInstance.id, port.id);
+      await refreshPorts();
+    } catch (error) {
+      alert(error.response?.data?.detail || 'Failed to close port');
+    }
+  };
+
+  const handleLaunch = async (instance) => {
+    try {
+      const response = await getInstanceLaunch(instance.id);
+      const first = (response.data?.ports || []).find(p => p.launch_url);
+      if (first?.launch_url) {
+        window.open(first.launch_url, '_blank');
+      } else {
+        alert('No open launch port yet. Open a port first.');
+      }
+    } catch (error) {
+      alert(error.response?.data?.detail || 'Failed to get launch URL');
+    }
+  };
+
+
   const getStatusIcon = (status) => {
     switch ((status || '').toLowerCase()) {
       case 'running': return <CheckCircle size={16} color="#22c55e" />;
@@ -274,6 +346,8 @@ const Instances = () => {
                 <td>{Number(instance.accumulated_cost || 0).toFixed(2)}</td>
                 <td>
                   <button className="btn-icon" title="Logs" onClick={() => handleViewLogs(instance)}><Terminal size={16} /></button>
+                  <button className="btn-icon" title="Ports" onClick={() => openPortsModal(instance)}>Port</button>
+                  <button className="btn-icon" title="Launch" onClick={() => handleLaunch(instance)}>Open</button>
                   <button className="btn-icon" title="Start" disabled={actionLoading === `${instance.id}-start`} onClick={() => handleAction(instance, 'start')}><Play size={16} /></button>
                   <button className="btn-icon" title="Stop" disabled={actionLoading === `${instance.id}-stop`} onClick={() => handleAction(instance, 'stop')}><Square size={16} /></button>
                   <button className="btn-icon danger" title="Delete" onClick={() => openDeleteModal(instance)}><Trash2 size={16} /></button>
@@ -373,6 +447,40 @@ const Instances = () => {
           <div className="modal-header"><h2>Delete Instance</h2><button className="btn-icon" onClick={() => setShowDeleteModal(false)}><X size={20} /></button></div>
           <p>Delete instance <strong>{selectedInstance.pod_name}</strong>?</p>
           <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowDeleteModal(false)}>Cancel</button><button className="btn btn-danger" onClick={handleDeleteInstance}>Delete</button></div>
+        </div></div>
+      )}
+
+
+      {showPortsModal && selectedInstance && (
+        <div className="modal-overlay"><div className="modal large">
+          <div className="modal-header"><h2>Ports / App Access: {selectedInstance.pod_name}</h2><button className="btn-icon" onClick={() => setShowPortsModal(false)}><X size={20} /></button></div>
+
+          <form onSubmit={handleOpenPort} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '12px', alignItems: 'end' }}>
+            <div className="form-group"><label>External Port</label><input type="number" min="1" max="65535" value={portForm.port} onChange={e => setPortForm({ ...portForm, port: e.target.value })} required /></div>
+            <div className="form-group"><label>Target Port</label><input type="number" min="1" max="65535" value={portForm.target_port} onChange={e => setPortForm({ ...portForm, target_port: e.target.value })} required /></div>
+            <div className="form-group"><label>Protocol</label><select value={portForm.protocol} onChange={e => setPortForm({ ...portForm, protocol: e.target.value })}><option value="TCP">TCP</option></select></div>
+            <button type="submit" className="btn btn-primary">Open Port</button>
+          </form>
+
+          <div className="table-container" style={{ marginTop: '16px' }}>
+            <table className="data-table">
+              <thead><tr><th>ID</th><th>Port</th><th>Target</th><th>NodePort</th><th>URL</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>
+                {ports.map(p => (
+                  <tr key={p.id}>
+                    <td>{p.id}</td>
+                    <td>{p.port}</td>
+                    <td>{p.target_port}</td>
+                    <td>{p.node_port || '-'}</td>
+                    <td>{p.launch_url ? <a href={p.launch_url} target="_blank" rel="noreferrer">{p.launch_url}</a> : '-'}</td>
+                    <td>{p.status}</td>
+                    <td><button className="btn btn-danger btn-sm" onClick={() => handleClosePort(p)}>Close</button></td>
+                  </tr>
+                ))}
+                {ports.length === 0 && <tr><td colSpan="7" style={{ textAlign: 'center', padding: '20px' }}>No open ports</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </div></div>
       )}
 

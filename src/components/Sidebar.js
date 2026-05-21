@@ -34,6 +34,7 @@ const Sidebar = ({ activePage, setActivePage }) => {
     { id: 'users', label: 'Users', icon: Users },
     { id: 'plans', label: 'Rental Plans', icon: FileText },
     { id: 'billing', label: 'Billing', icon: CreditCard },
+    { id: 'monitoring', label: 'Monitoring', icon: Activity },
   ];
 
   const systemItems = [

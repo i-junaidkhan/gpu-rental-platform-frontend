@@ -11,13 +11,15 @@ import {
   X,
   Save
 } from 'lucide-react';
-import { getBillingEvents, createBillingEvent, getUsers } from '../services/api';
+import { getBillingEvents, createBillingEvent, getUsers, getBillingUsageRaw, getBillingUsageSummary } from '../services/api';
 
 const Billing = () => {
   const [events, setEvents] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [usageRaw, setUsageRaw] = useState([]);
+  const [usageSummary, setUsageSummary] = useState(null);
 
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
@@ -38,12 +40,16 @@ const Billing = () => {
 
   const fetchData = async () => {
     try {
-      const [eventsRes, usersRes] = await Promise.all([
+      const [eventsRes, usersRes, usageRes, summaryRes] = await Promise.all([
         getBillingEvents(),
-        getUsers()
+        getUsers(),
+        getBillingUsageRaw(),
+        getBillingUsageSummary('daily')
       ]);
       setEvents(Array.isArray(eventsRes.data) ? eventsRes.data : (eventsRes.data.events || eventsRes.data.billingEvents || []));
       setUsers(Array.isArray(usersRes.data) ? usersRes.data : (usersRes.data.users || []));
+      setUsageRaw(Array.isArray(usageRes.data) ? usageRes.data : (usageRes.data.usage || []));
+      setUsageSummary(summaryRes.data || null);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -219,6 +225,56 @@ const Billing = () => {
             </h3>
             <p>Net Revenue</p>
           </div>
+        </div>
+      </div>
+
+
+      {/* Usage Summary */}
+      <div className="card" style={{ marginBottom: '24px' }}>
+        <div className="card-header">
+          <h3 className="card-title">Usage Summary</h3>
+        </div>
+        <div className="stats-grid">
+          <div className="stat-card">
+            <div className="stat-content">
+              <h3>{usageSummary?.total_instances ?? usageRaw.length}</h3>
+              <p>Total Instances</p>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-content">
+              <h3>{usageSummary?.active_instances ?? usageRaw.filter(x => String(x.status).toLowerCase() === 'running').length}</h3>
+              <p>Active Instances</p>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-content">
+              <h3>${Number(usageSummary?.total_accumulated_cost || 0).toFixed(2)}</h3>
+              <p>Accumulated Cost</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="table-container" style={{ marginTop: '16px' }}>
+          <table className="data-table">
+            <thead>
+              <tr><th>Instance</th><th>Pod</th><th>Project</th><th>User</th><th>Status</th><th>Rate/hr</th><th>Cost</th></tr>
+            </thead>
+            <tbody>
+              {usageRaw.slice(0, 20).map(row => (
+                <tr key={row.instance_id}>
+                  <td>{row.instance_id}</td>
+                  <td>{row.pod_name}</td>
+                  <td>{row.project_id || '-'}</td>
+                  <td>{row.user_id}</td>
+                  <td>{row.status}</td>
+                  <td>${Number(row.price_per_hour || 0).toFixed(2)}</td>
+                  <td>${Number(row.accumulated_cost || 0).toFixed(2)}</td>
+                </tr>
+              ))}
+              {usageRaw.length === 0 && <tr><td colSpan="7" style={{ textAlign: 'center', padding: '20px' }}>No usage rows</td></tr>}
+            </tbody>
+          </table>
         </div>
       </div>
 
